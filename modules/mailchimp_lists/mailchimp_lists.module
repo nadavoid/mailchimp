@@ -1145,3 +1145,61 @@ function mailchimp_lists_save(MailchimpList $list) {
 function mailchimp_list_create(array $values = array()) {
   return entity_get_controller('mailchimp_list')->create($values);
 }
+
+/**
+ * Implements hook_mollom_form_list().
+ */
+function mailchimp_lists_mollom_form_list() {
+  $forms = array();
+  $form_prefix = 'mailchimp_lists_user_subscribe_form_';
+
+  foreach (mailchimp_lists_load_multiple_by_name() as $name => $list) {
+    $forms[$form_prefix . $name] = array(
+      'title' => $list->label(),
+    );
+  }
+
+  return $forms;
+}
+
+/**
+ * Implements hook_mollom_form_info().
+ */
+function mailchimp_lists_mollom_form_info($form_id) {
+  // Get the subscribe form.
+  $account = user_load(0);
+  $form_prefix = 'mailchimp_lists_user_subscribe_form_';
+  $list_name = drupal_substr($form_id, strlen($form_prefix));
+  $list = mailchimp_lists_load_multiple_by_name($list_name);
+  $form = drupal_get_form($form_prefix . $list->name, array($list), $account);
+
+  // Set mollom form info.
+  $mergevars_path = "mailchimp_lists][mailchimp_$list_name][mergevars][";
+  $form_info = array(
+    'bypass access' => array('administer nodes'),
+    'mapping' => array(
+      'author_mail' => $mergevars_path . 'EMAIL',
+    ),
+  );
+
+  // Enable protection on merge fields.
+  if ($mergevars_fields = $form['mailchimp_lists']["mailchimp_$list_name"]['mergevars']) {
+    $form_info['elements'] = array();
+    foreach ($mergevars_fields as $field_name => $field) {
+      // If not 'EMAIL' and if 1st character is not '#', add the field.
+      if ($field_name != 'EMAIL' && substr($field_name, 0, 1) != '#') {
+        $form_info['elements'][$mergevars_path . $field_name] = t($mergevars_fields[$field_name]['#title']);
+      }
+    }
+  }
+
+  // Set default protection mode based on presence of added fields.
+  if (!empty($form_info['elements'])) {
+    $form_info['mode'] = MOLLOM_MODE_ANALYSIS;
+  }
+  else {
+    $form_info['mode'] = MOLLOM_MODE_CAPTCHA;
+  }
+
+  return $form_info;
+}
